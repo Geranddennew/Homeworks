@@ -1,48 +1,77 @@
-import sqlite3
-from urllib import request, parse
-from urllib.request import urlopen
-from urllib.error import HTTPError
-from datetime import datetime
+import random
+import numpy as np
+from progress.bar import Bar
+import mysql.connector
+import time
+import logging
+from random import randint
 
-conn = sqlite3.connect("tracker.db")
-cursor = conn.cursor()
-cursor.execute(
-    "CREATE TABLE `hosts` ( `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE, `url` TEXT, `msg` TEXT )")
-cursor.execute(
-    "CREATE TABLE `events` ( `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE, `host_id` INTEGER NOT NULL, `event` TEXT, `time` TEXT NOT NULL )")
-conn.commit()
-hosts = [['http://ggwa.ga/webmail/'], ['https://ggwa.ga/']]
-cursor.executemany("INSERT INTO hosts (url, msg) VALUES (?, 'New')", hosts)
+SqlFormulaUser = 'INSERT INTO DataUser (User_name, User_surname,User_Age) VALUES '
+SqlFormulaTask = 'INSERT INTO DataTask (Task_TypeOfDoctor, Task_NameProced,Task_Pain,Task_Cost) VALUES '
+count = 100
 
 
-class NoRedirectHandler(request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-noRedirect = request.build_opener(NoRedirectHandler)
-
-
-def tg_send(msg):
-    base_url = 'https://api.telegram.org/bot5166413715:AAFFo6TuBkXGlek-DleCHACmrR08rP2ZqzA/sendMessage?chat_id=1889834495&text='
-    return urlopen(base_url + parse.quote_plus(msg)).status
-
-
-conn = sqlite3.connect("tracker.db")
-conn.row_factory = sqlite3.Row
-cursor = conn.cursor()
-for host in cursor.execute("SELECT * FROM hosts").fetchall():
-    url = host['url']
+def takes_names():
+    logging.basicConfig(level=logging.DEBUG, filename='myapp.log', format='%(asctime)s %(levelname)s:%(message)s')
+    names = 'names.txt'
     try:
-        response = urlopen(url, timeout=20)
-    except (HTTPError) as e:
-        msg = str(e)
-    except Exception as e:
-        msg = str(e.__class__.__name__) + ': ' + str(getattr(e, 'reason', e))
-    else:
-        msg = 'OK ' + str(response.status)
-    if host['msg'] == msg: continue
-    cursor.execute("UPDATE hosts SET msg = ? WHERE id = ?", (msg, host['id']))
-    cursor.execute("INSERT INTO events (host_id, event, time) VALUES (?, ?, ?)", (host['id'], msg, datetime.now()))
-    conn.commit()
-    tg_send(url + ' ' + msg)
+        with open(names, encoding='utf-8') as file:
+            data_name = file.read().split('\n')
+
+        logging.debug("names.txt file has %d words", len(data_name))
+
+    except OSError as e:
+        logging.error("error reading the file %d", names)
+
+    return data_name
+
+
+def takes_surnames():
+    logging.basicConfig(level=logging.DEBUG, filename='myapp.log', format='%(asctime)s %(levelname)s:%(message)s')
+    surnames = 'surname.txt'
+    try:
+        with open(surnames, encoding='utf-8') as file:
+            data_surnames = file.read().split('\n')
+
+        logging.debug("surname.txt file has %d words", len(data_surnames))
+
+    except OSError as e:
+        logging.error("error reading the file %d", surnames)
+    return data_surnames
+
+
+if __name__ == "__main__":
+    # Данные для DataTask
+    doctor = ['Allergist', 'Gastroenterologist', 'Hepatologist', 'Gerontologist', 'Cardiologist', 'Mammologist',
+              'Neurologist', 'Neonatologist', 'Oncologist', 'Ophthalmologist', 'Pediatrician', 'Psychotherapist',
+              'Resuscitator']
+    procedure = ['inspection', 'Prescribe treatment', 'Getting Help']
+    pain = ['acute', 'planned']
+
+    bar = Bar('Processing', max=count)
+    for i in range(count):
+        SqlFormulaUser += f"('{takes_names()[randint(1, len(takes_names()) - 1)]}','{takes_surnames()[randint(1, len(takes_surnames()) - 1)]}',{np.random.randint(18, 99)}),\n "
+        bar.next()
+    bar.finish()
+    SqlFormulaUser = SqlFormulaUser[:-3] + ';'
+    # print(SqlFormulaUser)
+
+    bar = Bar('Processing', max=count)
+    for i in range(count):
+        SqlFormulaTask += f"('{random.choice(doctor)}','{random.choice(procedure)}','{random.choice(pain)}',{np.random.randint(1000, 2000)}),\n "
+        bar.next()
+    bar.finish()
+    SqlFormulaTask = SqlFormulaTask[:-3] + ';'
+
+    # print(SqlFormulaTask)
+
+    with mysql.connector.connect(
+            host='localhost',
+            port=3306,
+            user='TestUser',
+            password='05062002',
+            database='testtask') as connection:
+        cursor = connection.cursor()
+        cursor.execute(SqlFormulaUser)
+        cursor.execute(SqlFormulaTask)
+        connection.commit()
